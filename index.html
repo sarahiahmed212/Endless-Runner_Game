@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nature Adventure | Forest Runner</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 25px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+    color: #F4F7FF;
+    background:
+        radial-gradient(ellipse at top, #174D68, transparent 62%),
+        linear-gradient(140deg, #081426, #102B46 58%, #190F2E);
+}
+
+h1 {
+    margin: 0;
+    text-align: center;
+    font-size: clamp(28px, 5vw, 46px);
+    letter-spacing: 2px;
+    color: #D8FF00;
+    text-shadow: 0 4px 0 #36502A;
+}
+
+.subtitle {
+    margin: 10px 0 24px;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: #8DE0C0;
+}
+
+.game-card {
+    width: min(900px, 96vw);
+    padding: 12px;
+    background: #101F35;
+    border: 2px solid #2D7182;
+    border-radius: 20px;
+    box-shadow: 0 18px 45px #020817CC;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px 14px;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #C8E7F0;
+}
+
+#status {
+    color: #D8FF00;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    background: #123B50;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+button {
+    padding: 13px 25px;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.2s, filter 0.2s;
+}
+
+button:hover {
+    transform: translateY(-3px);
+    filter: brightness(1.08);
+}
+
+.jump-btn {
+    background: #D8FF00;
+    color: #17251B;
+    box-shadow: 0 5px 0 #789A00;
+}
+
+.restart-btn {
+    background: #FF8C42;
+    color: #24152A;
+    box-shadow: 0 5px 0 #B64D25;
+}
+
+.hint {
+    margin-top: 20px;
+    text-align: center;
+    line-height: 2;
+    font-size: 13px;
+    color: #B8D6E8;
+}
+
+kbd {
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid #4E9DB0;
+    background: #102B46;
+    color: #D8FF00;
+}
+
+.footer {
+    margin-top: 15px;
+    color: #91B8CD;
+    font-size: 11px;
+    text-align: center;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🌿 NATURE ADVENTURE</h1>
+<div class="subtitle">EXPLORE THE FOREST · DODGE THE WILD</div>
+
+<div class="game-card">
+    <div class="header">
+        <span>🌲 FOREST RUNNER</span>
+        <span id="status">● READY</span>
+    </div>
+
+    <canvas id="game" width="850" height="420"></canvas>
+</div>
+
+<div class="controls">
+    <button class="jump-btn" id="jumpBtn">⬆ JUMP</button>
+    <button class="restart-btn" id="restartBtn">↻ RESTART</button>
+</div>
+
+<div class="hint">
+    Press <kbd>SPACE</kbd> to jump over obstacles!<br>
+    Logs, rocks, stumps and mushrooms are waiting! 🍄
+</div>
+
+<div class="footer">
+    MADE FOR FOREST EXPLORERS 🌙
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const statusText = document.getElementById("status");
+
+const W = canvas.width;
+const H = canvas.height;
+const ground = 330;
+
+let player;
+let obstacles;
+let score;
+let velocity;
+let isJumping;
+let gameOver;
+let animationId;
+let frame;
+let speed;
+let nextSpawn;
+let fireflies;
+let clouds;
+let trees;
+
+const obstacleTypes = ["log", "rock", "stump", "mushroom"];
+
+function random(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function pick(array) {
+    return array[Math.floor(Math.random() * array.length)];
+}
+
+function makeFireflies() {
+    fireflies = [];
+
+    for (let i = 0; i < 35; i++) {
+        fireflies.push({
+            x: random(0, W),
+            y: random(35, 295),
+            phase: random(0, Math.PI * 2),
+            size: random(1.5, 3)
+        });
+    }
+}
+
+function makeTrees() {
+    trees = [];
+
+    for (let i = 0; i < 12; i++) {
+        trees.push({
+            x: i * 90 + random(-15, 15),
+            height: random(95, 175),
+            width: random(45, 75),
+            shade: Math.floor(random(0, 3))
+        });
+    }
+}
+
+function restartGame() {
+    cancelAnimationFrame(animationId);
+
+    player = {
+        x: 115,
+        y: ground - 34,
+        size: 34
+    };
+
+    obstacles = [];
+    score = 0;
+    velocity = 0;
+    isJumping = false;
+    gameOver = false;
+    frame = 0;
+    speed = 4;
+    nextSpawn = 120;
+
+    makeFireflies();
+    makeTrees();
+
+    statusText.textContent = "● EXPLORING";
+    statusText.style.color = "#D8FF00";
+
+    gameLoop();
+}
+
+function jump() {
+    if (!isJumping && !gameOver) {
+        velocity = -14;
+        isJumping = true;
+    }
+}
+
+document.addEventListener("keydown", function(event) {
+    if (event.code === "Space") {
+        event.preventDefault();
+
+        if (!event.repeat) {
+            jump();
+        }
+    }
+});
+
+document.getElementById("jumpBtn").addEventListener("click", jump);
+document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+function drawBackground() {
+    // Magical twilight sky
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+
+    sky.addColorStop(0, "#0B1938");
+    sky.addColorStop(0.48, "#123B50");
+    sky.addColorStop(1, "#176B68");
+
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Moon
+    ctx.save();
+
+    ctx.fillStyle = "#FFD166";
+    ctx.shadowColor = "#FFD166";
+    ctx.shadowBlur = 25;
+
+    ctx.beginPath();
+    ctx.arc(695, 76, 29, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Moon shadow
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#123B50";
+    ctx.beginPath();
+    ctx.arc(708, 65, 25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Distant hills
+    ctx.fillStyle = "#176B68";
+    ctx.beginPath();
+    ctx.moveTo(0, 265);
+    ctx.quadraticCurveTo(160, 170, 310, 260);
+    ctx.quadraticCurveTo(500, 175, 660, 255);
+    ctx.quadraticCurveTo(780, 185, 850, 235);
+    ctx.lineTo(850, ground);
+    ctx.lineTo(0, ground);
+    ctx.closePath();
+    ctx.fill();
+
+    // Background trees
+    for (let i = 0; i < trees.length; i++) {
+        const tree = trees[i];
+
+        let x = (tree.x - frame * 0.45) % (W + 100);
+
+        if (x < -100) x += W + 100;
+
+        drawTree(x, ground - 10, tree.width, tree.height, tree.shade);
+    }
+
+    // Foreground distant bushes
+    ctx.fillStyle = "#123F53";
+
+    for (let i = 0; i < 16; i++) {
+        const x = i * 65 - (frame * 1.1 % 65);
+
+        ctx.beginPath();
+        ctx.ellipse(x, ground - 4, 37, 17, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Fireflies
+    fireflies.forEach(fly => {
+        const flicker = 0.25 + 0.75 *
+            ((Math.sin(frame * 0.07 + fly.phase) + 1) / 2);
+
+        const x = (fly.x - frame * 0.25) % W;
+        const y = fly.y + Math.sin(frame * 0.025 + fly.phase) * 7;
+
+        ctx.save();
+        ctx.globalAlpha = flicker;
+        ctx.fillStyle = "#FFE66D";
+        ctx.shadowColor = "#FFE66D";
+        ctx.shadowBlur = 12;
+
+        ctx.beginPath();
+        ctx.arc(x < 0 ? x + W : x, y, fly.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    });
+
+    // Ground
+    ctx.fillStyle = "#211D35";
+    ctx.fillRect(0, ground, W, H - ground);
+
+    // Grass strip
+    ctx.fillStyle = "#D8FF00";
+    ctx.fillRect(0, ground, W, 7);
+
+    // Little blades of grass
+    ctx.strokeStyle = "#A8F05A";
+    ctx.lineWidth = 2;
+
+    for (let i = 0; i < 85; i++) {
+        const x = (i * 17 - frame * 1.3 % 17);
+
+        ctx.beginPath();
+        ctx.moveTo(x, ground + 7);
+        ctx.lineTo(x - 3, ground + 1);
+        ctx.stroke();
+    }
+
+    // Ground details
+    ctx.fillStyle = "#4C3B54";
+
+    for (let i = 0; i < 22; i++) {
+        const x = (i * 47 - frame * speed % 47);
+
+        ctx.beginPath();
+        ctx.ellipse(x, ground + 32 + (i % 3) * 20,
+            3 + i % 4, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawTree(x, base, width, height, shade) {
+    const colors = ["#102B46", "#164C58", "#176B68"];
+
+    ctx.fillStyle = "#4A2947";
+    ctx.fillRect(
+        x - width * 0.09,
+        base - height * 0.55,
+        width * 0.18,
+        height * 0.55
+    );
+
+    ctx.fillStyle = colors[shade];
+
+    // Layered tree foliage
+    for (let i = 0; i < 3; i++) {
+        const y = base - height + i * height * 0.24;
+        const w = width * (1 - i * 0.12);
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - w / 2, y + height * 0.37);
+        ctx.lineTo(x + w / 2, y + height * 0.37);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function drawPlayer() {
+    const x = player.x;
+    const y = player.y;
+
+    ctx.save();
+
+    // Ground shadow
+    ctx.fillStyle = "#050B1D88";
+    ctx.beginPath();
+    ctx.ellipse(
+        x + 17,
+        ground + 4,
+        isJumping ? 13 : 22,
+        5,
+        0, 0, Math.PI * 2
+    );
+    ctx.fill();
+
+    // Body
+    const body = ctx.createLinearGradient(x, y, x + 34, y + 34);
+    body.addColorStop(0, "#66F0FF");
+    body.addColorStop(1, "#0878FF");
+
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.roundRect(x, y, 34, 34, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = "#063B7A";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = "#172033";
+    ctx.fillRect(x + 22, y + 8, 5, 6);
+
+    // Smile
+    ctx.strokeStyle = "#172033";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 21, y + 18, 5, 0.2, 1.3);
+    ctx.stroke();
+
+    // Highlight
+    ctx.fillStyle = "#FFFFFFBB";
+    ctx.fillRect(x + 5, y + 5, 10, 3);
+
+    ctx.restore();
+}
+
+function createObstacle(type, x) {
+    const dimensions = {
+        log:      { w: 54, h: 38 },
+        rock:     { w: 42, h: 48 },
+        stump:    { w: 38, h: 62 },
+        mushroom: { w: 42, h: 60 }
+    };
+
+    const d = dimensions[type];
+
+    return {
+        type: type,
+        x: x,
+        y: ground - d.h,
+        w: d.w,
+        h: d.h
+    };
+}
+
+function spawnGroup() {
+    // One obstacle at a time, with a fair reaction gap.
+    const type = pick(obstacleTypes);
+    const obstacle = createObstacle(type, W + 20);
+
+    obstacles.push(obstacle);
+    nextSpawn = random(220, 340);
+}
+
+function drawLog(o) {
+    ctx.save();
+
+    // A chunky, taller fallen log
+    ctx.fillStyle = "#FF8C42";
+    ctx.beginPath();
+    ctx.roundRect(o.x, o.y + 4, o.w, o.h - 4, 9);
+    ctx.fill();
+
+    ctx.strokeStyle = "#9B431F";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Cut end
+    ctx.fillStyle = "#FFD0A1";
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w - 6, o.y + o.h / 2 + 2,
+        6, Math.min(10, o.h * 0.28), 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#C96B32";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w - 6, o.y + o.h / 2 + 2,
+        3, Math.min(5, o.h * 0.14), 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Bark detail
+    ctx.strokeStyle = "#9B431F";
+    ctx.beginPath();
+    ctx.moveTo(o.x + 12, o.y + 9);
+    ctx.lineTo(o.x + 19, o.y + o.h - 8);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawRock(o) {
+    ctx.save();
+
+    ctx.fillStyle = "#B9C7D9";
+    ctx.strokeStyle = "#53677F";
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.moveTo(o.x + 1, o.y + o.h);
+    ctx.lineTo(o.x + 3, o.y + o.h * 0.48);
+    ctx.lineTo(o.x + o.w * 0.28, o.y + o.h * 0.12);
+    ctx.lineTo(o.x + o.w * 0.62, o.y + 2);
+    ctx.lineTo(o.x + o.w - 3, o.y + o.h * 0.28);
+    ctx.lineTo(o.x + o.w, o.y + o.h - 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#F3F7FF";
+    ctx.beginPath();
+    ctx.moveTo(o.x + o.w * 0.2, o.y + o.h * 0.38);
+    ctx.lineTo(o.x + o.w * 0.35, o.y + o.h * 0.18);
+    ctx.lineTo(o.x + o.w * 0.53, o.y + o.h * 0.34);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawStump(o) {
+    ctx.save();
+
+    ctx.fillStyle = "#8A45C7";
+    ctx.fillRect(o.x + 3, o.y + 7, o.w - 6, o.h - 7);
+
+    ctx.fillStyle = "#D5A7FF";
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w / 2, o.y + 7,
+        o.w / 2 - 1, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#512D7B";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Growth rings
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w / 2, o.y + 7,
+        8, 3.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawMushroom(o) {
+    ctx.save();
+
+    const capH = o.h * 0.42;
+    const capW = o.w;
+    const stemW = o.w * 0.38;
+    const stemX = o.x + (o.w - stemW) / 2;
+    const stemY = o.y + capH * 0.72;
+
+    // Taller stem
+    ctx.fillStyle = "#FFF0D5";
+    ctx.beginPath();
+    ctx.roundRect(stemX, stemY, stemW, o.h - (stemY - o.y), 5);
+    ctx.fill();
+
+    // Big bright mushroom cap
+    ctx.fillStyle = "#FF4F87";
+    ctx.beginPath();
+    ctx.ellipse(o.x + capW / 2, o.y + capH * 0.62,
+        capW / 2, capH * 0.62, 0, Math.PI, 0);
+    ctx.lineTo(o.x + capW, o.y + capH * 0.72);
+    ctx.lineTo(o.x, o.y + capH * 0.72);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#8E2458";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // White spots
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(o.x + capW * 0.28, o.y + capH * 0.35, 3.5, 0, Math.PI * 2);
+    ctx.arc(o.x + capW * 0.58, o.y + capH * 0.22, 3.5, 0, Math.PI * 2);
+    ctx.arc(o.x + capW * 0.76, o.y + capH * 0.48, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawObstacle(o) {
+    switch (o.type) {
+        case "log":
+            drawLog(o);
+            break;
+        case "rock":
+            drawRock(o);
+            break;
+        case "stump":
+            drawStump(o);
+            break;
+        case "mushroom":
+            drawMushroom(o);
+            break;
+    }
+}
+
+function collides(o) {
+    // Hitbox is slightly smaller than the drawings.
+    const px = player.x + 5;
+    const py = player.y + 4;
+    const pw = player.size - 10;
+    const ph = player.size - 4;
+
+    const ox = o.x + 4;
+    const oy = o.y + 5;
+    const ow = o.w - 8;
+    const oh = o.h - 5;
+
+    return (
+        px < ox + ow &&
+        px + pw > ox &&
+        py < oy + oh &&
+        py + ph > oy
+    );
+}
+
+function drawScore() {
+    ctx.save();
+
+    ctx.fillStyle = "#F4F7FF";
+    ctx.font = "bold 14px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText("FOREST SCORE", 20, 30);
+
+    ctx.fillStyle = "#D8FF00";
+    ctx.font = "bold 30px Arial";
+    ctx.fillText(String(score).padStart(3, "0"), 18, 64);
+
+    ctx.fillStyle = "#F4F7FF";
+    ctx.font = "bold 13px Arial";
+    ctx.fillText("SPEED  " + speed.toFixed(1), 20, 87);
+
+    ctx.restore();
+}
+
+function drawGameOver() {
+    ctx.save();
+
+    ctx.fillStyle = "#080F25E8";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#D8FF00";
+    ctx.font = "bold 43px Arial";
+    ctx.fillText("ADVENTURE OVER!", W / 2, 165);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 23px Arial";
+    ctx.fillText("Forest Score: " + score, W / 2, 210);
+
+    ctx.fillStyle = "#8DE0C0";
+    ctx.font = "17px Arial";
+    ctx.fillText("Press RESTART to explore again!", W / 2, 253);
+
+    ctx.restore();
+}
+
+function gameLoop() {
+    frame++;
+
+    drawBackground();
+
+    if (!gameOver) {
+        // Gradually increase difficulty
+        speed = Math.min(8, 4 + score * 0.045);
+
+        // Spawn new obstacle groups
+        nextSpawn--;
+
+        if (nextSpawn <= 0) {
+            spawnGroup();
+        }
+
+        // Update obstacles
+        for (const o of obstacles) {
+            o.x -= speed;
+        }
+
+        // Remove obstacles that have left the screen.
+        // Score increases for each complete group that passes.
+        let passed = 0;
+
+        obstacles = obstacles.filter(o => {
+            if (o.x + o.w < 0) {
+                passed++;
+                return false;
+            }
+
+            return true;
+        });
+
+        // Score individual obstacles, as in an endless runner.
+        score += passed;
+
+        // Jump physics
+        velocity += 0.55;
+        player.y += velocity;
+
+        if (player.y >= ground - player.size) {
+            player.y = ground - player.size;
+            velocity = 0;
+            isJumping = false;
+        }
+
+        // Draw player and obstacles
+        drawPlayer();
+
+        for (const o of obstacles) {
+            drawObstacle(o);
+        }
+
+        drawScore();
+
+        // Collision detection
+        if (obstacles.some(collides)) {
+            gameOver = true;
+
+            statusText.textContent = "● ADVENTURE OVER";
+            statusText.style.color = "#FF6B9D";
+        }
+    }
+
+    if (gameOver) {
+        drawGameOver();
+    }
+
+    if (!gameOver) {
+        animationId = requestAnimationFrame(gameLoop);
+    }
+}
+
+restartGame();
+</script>
+
+</body>
+</html>
